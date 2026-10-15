@@ -9,3 +9,19 @@
 부캉이를 직접 보지 못해서 그냥 만들어봤습니다.  
 맥북 화면에서 부캉이가 이리저리 헤엄칩니다. 창 위아래로 돌아다니고, 마우스로 다가가면 피하기도 하고, 가끔 잠수도 합니다.  
 별다른 기능은 없고, 그냥 부캉이 구경하는 앱입니다. 구경하려고 해도 잘 안 보일 겁니다.
+
+### 설치방법
+```
+brew install --cask dohyeon5626/tap/bukangi
+```
+
+### 업데이트
+```
+brew upgrade --cask bukangi
+```
+
+### 삭제
+```
+brew uninstall --cask bukangi           # 앱만 삭제
+brew uninstall --zap --cask bukangi     # 설정까지 완전히 삭제
+```
