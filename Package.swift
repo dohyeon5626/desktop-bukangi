@@ -7,8 +7,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Bukangi",
-            path: "Sources/Bukangi",
-            swiftSettings: [.unsafeFlags(["-Ounchecked"])]
+            path: "Sources/Bukangi"
         )
     ],
     swiftLanguageModes: [.v5]
