@@ -69,6 +69,29 @@ enum SnapshotTool {
         }
         let tex = NSBitmapImageRep(cgImage: SharkTextures.body())
         try? tex.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "\(outDir)/body_tex.png"))
+        // Menu bar logo previews: every swim frame, large (light) and at real size @2x (dark).
+        for (name, scale, dark) in [("icon_large", 10.0, false), ("icon_dark", 2.0, true)] {
+            let w = Int(StatusIcon.size.width * scale), h = Int(StatusIcon.size.height * scale)
+            let n = StatusIcon.frameCount
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h * n, bitsPerSample: 8,
+                                       samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                       colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            (dark ? NSColor(white: 0.15, alpha: 1) : NSColor(white: 0.93, alpha: 1)).setFill()
+            NSRect(x: 0, y: 0, width: w, height: h * n).fill()
+            for k in 0..<n {
+                // Draw each frame on its own transparent layer first, as the menu bar does.
+                let phase = Double(k) / Double(n) * 2 * .pi
+                let icon = NSImage(size: NSSize(width: w, height: h), flipped: false) { r in
+                    StatusIcon.draw(in: r, phase: phase, color: dark ? .white : .black)
+                    return true
+                }
+                icon.draw(in: NSRect(x: 0, y: h * (n - 1 - k), width: w, height: h))
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "\(outDir)/\(name).png"))
+        }
         print("wrote snapshots to \(outDir)")
     }
 }
