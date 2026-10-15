@@ -6,6 +6,8 @@
 	<string>Bukangi</string>
 	<key>CFBundleDisplayName</key>
 	<string>부캉이</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.dohyeon5626.bukangi</string>
 	<key>CFBundleExecutable</key>
