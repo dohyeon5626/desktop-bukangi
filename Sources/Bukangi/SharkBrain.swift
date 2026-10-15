@@ -75,9 +75,9 @@ final class SharkBrain {
     private var wakeBurst = 0
     /// When the Mac is busy she stays deep and lazy.
     var calm = false
-    /// Mood: 1 = normal, ~0.6 = leisurely, ~0.3 = barely gliding.
-    private(set) var energy = 1.0
-    private var energyTarget = 1.0
+    /// Mood: 0.9 = normal, ~0.6 = leisurely, ~0.35 = slow, ~0.2 = barely drifting.
+    private(set) var energy = 0.9
+    private var energyTarget = 0.9
     private var nextMoodChange = 25.0
     private var coveredTime = 0.0
     /// 0...1: how surfaced (and so how cute) she looks.
@@ -305,8 +305,9 @@ final class SharkBrain {
         nextMoodChange -= dt
         if nextMoodChange <= 0 {
             nextMoodChange = .random(in: 18...50)
+            // Mostly unhurried, sometimes barely drifting.
             let r = Double.random(in: 0...1)
-            energyTarget = r < 0.4 ? 1.0 : (r < 0.75 ? 0.6 : 0.32)
+            energyTarget = r < 0.3 ? 0.9 : (r < 0.6 ? 0.6 : (r < 0.85 ? 0.35 : 0.2))
         }
         let goal = calm ? 0.35 : energyTarget
         energy += (goal - energy) * min(1, dt * 0.15)
