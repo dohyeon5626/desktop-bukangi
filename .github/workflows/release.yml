@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-attach:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build app (universal, versioned from tag)
+        run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/build.sh --universal --zip
+
+      - name: Attach build artifacts to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Bukangi-*.zip
