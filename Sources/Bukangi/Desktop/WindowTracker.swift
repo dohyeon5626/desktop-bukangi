@@ -7,8 +7,8 @@ struct TrackedWindow {
 }
 
 /// Reads the on-screen window stack (front to back) on a background queue, without needing
-/// Screen Recording permission. Windows that fill a whole display (full-screen apps) are treated
-/// as the seabed: Bukangi swims over them instead of hiding under them.
+/// Screen Recording permission. Windows covering most of a display (full-screen or maximized apps)
+/// are treated as the seabed: Bukangi swims over them instead of hiding under them.
 final class WindowTracker {
     private let pid = ProcessInfo.processInfo.processIdentifier
     private let queue = DispatchQueue(label: "bukangi.windows", qos: .userInteractive)

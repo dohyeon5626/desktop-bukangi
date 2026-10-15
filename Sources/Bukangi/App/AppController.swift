@@ -152,7 +152,6 @@ final class AppController: NSObject, NSApplicationDelegate {
             shadowOffset: CGVector(dx: L * (0.025 + 0.075 * h), dy: -L * (0.035 + 0.10 * h)),
             shadowSoftness: 0.25 + 0.75 * h,
             cute: brain.cute))
-        // A touch of softness even at the surface; much more when deep.
         sharkRenderer.setBlur(BlurTechnique.level(forPixels: max(2.0, 7.0 * pow(depth, 1.4) * Double(backing))))
     }
 
@@ -184,7 +183,6 @@ final class AppController: NSObject, NSApplicationDelegate {
             let a = occlusion[w.id] ?? 0
             return a > 0.01 && w.frame.intersects(region) ? (w.frame, a) : nil
         }
-        // Completely under a window: nothing to draw.
         let covered = brain.windows.contains { (occlusion[$0.id] ?? 0) > 0.99 && $0.frame.contains(region) }
         if covered {
             if !hiddenUnderWindow {

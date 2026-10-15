@@ -196,7 +196,6 @@ final class SharkBrain {
         nextMoodChange -= dt
         if nextMoodChange <= 0 {
             nextMoodChange = .random(in: 18...50)
-            // Mostly unhurried, sometimes barely drifting.
             let r = Double.random(in: 0...1)
             energyTarget = r < 0.3 ? 0.9 : (r < 0.6 ? 0.6 : (r < 0.85 ? 0.35 : 0.2))
         }
@@ -274,7 +273,6 @@ final class SharkBrain {
         let dl = max(hypot(dx, dy), 1e-3)
         dx /= dl; dy /= dl
 
-        // Keep away from the cursor.
         if hasMouse && !isCovered(center) {
             let c = center
             let mx = Double(c.x - mouse.x), my = Double(c.y - mouse.y)
@@ -284,7 +282,6 @@ final class SharkBrain {
                 dx += mx / md * w; dy += my / md * w
             }
         }
-        // Soft screen walls.
         if let r = screenFor(head) {
             let m = Double(L) * 0.30
             func push(_ d: CGFloat) -> Double { Double(d) < m ? 1.8 * (1 - max(Double(d), 0) / m) : 0 }
@@ -311,7 +308,6 @@ final class SharkBrain {
         head.x += CGFloat(cos(heading)) * speed * CGFloat(dt)
         head.y += CGFloat(sin(heading)) * speed * CGFloat(dt)
 
-        // Bank into turns.
         let rollGoal = max(-0.42, min(0.42, -turnRate * Double(speed) / 300))
         roll += (rollGoal - roll) * min(1, dt * 2.2)
 

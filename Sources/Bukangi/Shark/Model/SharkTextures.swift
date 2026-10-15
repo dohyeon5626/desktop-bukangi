@@ -68,7 +68,6 @@ enum SharkTextures {
 
             var col = dorsal * (0.84 + 0.20 * min(a / bb, 1))
             let n4 = noise(u * 26, v * 12, periodY: 12)
-            // Soft, plush colouring: only very gentle, large-scale variation.
             let mottle: Float = 1 + (n3 - 0.5) * 0.06 + (n4 - 0.5) * 0.02
             col *= mottle
             col *= 1 - 0.05 * exp(-pow((a - bb + 0.08) / 0.08, 2))

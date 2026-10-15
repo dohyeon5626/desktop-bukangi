@@ -7,7 +7,6 @@ enum SnapshotTool {
                      length: Double) -> ([CGPoint], [Double]) {
         let n = SharkMesh.boneCount
         let seg = length / Double(n - 1)
-        // Base path: arc behind the head.
         var base: [CGPoint] = [], tang: [Double] = []
         var p = head, a = heading
         for i in 0..<n {

@@ -21,9 +21,6 @@ extension SharkBrain {
         return windows.first { $0.id == id }
     }
 
-    /// Ask to move to another layer. The change only happens once her body is clear of every
-    /// window whose stacking relation to her would flip, so she never ghosts through a window:
-    /// she swims out from under (or off) it first, then rises or dives.
     /// Ask to move to another layer. Windows are treated like terrain: she only changes her
     /// relation to a window while she isn't overlapping it, one window at a time, so she
     /// slips under (or glides over) each window right at its edge as she swims past.

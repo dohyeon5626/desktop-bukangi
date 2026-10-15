@@ -40,7 +40,7 @@ enum Shaders {
         #pragma arguments
         float depthTint;
         #pragma body
-        // A light illustrated look: soft tonal bands and an ink-like navy edge.
+        // A light illustrated look: soft tonal bands.
         float3 ilCol = _output.color.rgb;
         float ilA = _output.color.a;
         float ilLum = dot(ilCol, float3(0.299, 0.587, 0.114));

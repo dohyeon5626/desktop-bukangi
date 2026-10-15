@@ -80,7 +80,6 @@ final class SharkRig {
             m.setValue(NSNumber(value: 0.0), forKey: "depthTint")
             return m
         }
-        // Plush, matte skin: no pores or scratches, just soft light.
         for m in mats { m.roughness.contents = 0.88 }
         geometry.materials = mats
         skinMaterials = mats
@@ -92,7 +91,6 @@ final class SharkRig {
         container.addChildNode(skinned)
         skinned.skinner = makeSkinner(geometry, bones: bones, weights: weights, indices: indices)
 
-        // Eyes ride on the head bone.
         let eyeMat = SCNMaterial()
         eyeMat.lightingModel = .physicallyBased
         eyeMat.diffuse.contents = NSColor(calibratedWhite: 0.03, alpha: 1)
@@ -100,7 +98,6 @@ final class SharkRig {
         eyeMat.metalness.contents = 0.0
         eyeMat.shaderModifiers = Shaders.skin
         skinMaterials.append(eyeMat)
-        // Glassy eyes with a tiny catchlight, so she reads as alive (and a bit cute) from above.
         let glint = SCNMaterial()
         glint.lightingModel = .constant
         glint.diffuse.contents = NSColor(calibratedWhite: 1, alpha: 1)
@@ -119,7 +116,7 @@ final class SharkRig {
         }
 
 
-        // Shadow: same skin driven by a duplicate skeleton, flattened, with soft edges from a shader.
+        // Shadow: same skin driven by a duplicate skeleton, with soft edges from a shader.
         let shadowGeo = geometry.copy() as! SCNGeometry
         let sm = SCNMaterial()
         sm.lightingModel = .constant
