@@ -1,11 +1,11 @@
 import AppKit
-import SceneKit
 import ServiceManagement
 
 final class AppController: NSObject, NSApplicationDelegate {
     private let rig = SharkRig()
     private let brain = SharkBrain()
     private let tracker = WindowTracker()
+    private let loadMonitor = SystemLoadMonitor()
     private lazy var sharkRenderer = SharkRenderer(scene: rig.scene)
     private var overlays: [Overlay] = []
     private var occlusion: [CGWindowID: CGFloat] = [:]
@@ -29,7 +29,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         brain.windows = tracker.windows
         brain.reset()
         tracker.start()
-        startLoadMonitor()
+        loadMonitor.onChange = { [weak self] busy in self?.setCalm(busy) }
+        loadMonitor.start()
         start()
         if let force = ProcessInfo.processInfo.environment["BK_SUMMON"], !force.isEmpty { brain.summon() }
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
@@ -217,37 +218,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         brain.wakePoints.removeAll()
     }
 
-    // MARK: System load
-
-    private var loadTimer: Timer?
-    private var lastTicks: (busy: UInt64, total: UInt64)?
-    private var busyStreak = 0
-
     /// When the Mac is working hard, Bukangi sinks deep, slows down and renders at 30 fps.
-    private func startLoadMonitor() {
-        loadTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.sampleLoad() }
-    }
-
-    private func sampleLoad() {
-        var info = host_cpu_load_info()
-        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
-        let r = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count)
-            }
-        }
-        guard r == KERN_SUCCESS else { return }
-        let t = info.cpu_ticks
-        let busy = UInt64(t.0) + UInt64(t.1) + UInt64(t.3)
-        let total = busy + UInt64(t.2)
-        defer { lastTicks = (busy, total) }
-        guard let last = lastTicks, total > last.total else { return }
-        let load = Double(busy - last.busy) / Double(total - last.total)
-
-        var calm = brain.calm
-        if load > 0.70 { busyStreak += 1 } else { busyStreak = 0 }
-        if !calm && busyStreak >= 2 { calm = true }
-        if calm && load < 0.45 { calm = false }
+    private func setCalm(_ calm: Bool) {
         guard calm != brain.calm else { return }
         brain.calm = calm
         if calm { brain.calmDown() }

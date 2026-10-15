@@ -1,24 +1,5 @@
 import AppKit
-import SceneKit
 import Metal
-
-final class OverlayWindow: NSWindow {
-    init(screen: NSScreen) {
-        super.init(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
-        setFrame(screen.frame, display: false)
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        ignoresMouseEvents = true
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        isReleasedWhenClosed = false
-        animationBehavior = .none
-    }
-
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-}
 
 /// One transparent, click-through overlay per display. The shark is drawn into a small
 /// CAMetalLayer that follows her around, instead of a full-screen view, so the GPU and the
