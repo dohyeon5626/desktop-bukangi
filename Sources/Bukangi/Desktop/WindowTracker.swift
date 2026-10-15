@@ -1,5 +1,11 @@
 import AppKit
 
+struct TrackedWindow {
+    let id: CGWindowID
+    /// Cocoa global coordinates (origin bottom-left of the primary screen).
+    let frame: CGRect
+}
+
 /// Reads the on-screen window stack (front to back) on a background queue, without needing
 /// Screen Recording permission. Windows that fill a whole display (full-screen apps) are treated
 /// as the seabed: Bukangi swims over them instead of hiding under them.
