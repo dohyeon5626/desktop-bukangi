@@ -5,6 +5,8 @@ final class SystemLoadMonitor {
     /// Called with `true` when the Mac has been busy for a while, `false` once it calms down.
     var onChange: ((Bool) -> Void)?
     private(set) var isBusy = false
+    /// Most recent overall CPU load, 0...1.
+    private(set) var load = 0.0
 
     private var timer: Timer?
     private var lastTicks: (busy: UInt64, total: UInt64)?
@@ -29,6 +31,7 @@ final class SystemLoadMonitor {
         defer { lastTicks = (busy, total) }
         guard let last = lastTicks, total > last.total else { return }
         let load = Double(busy - last.busy) / Double(total - last.total)
+        self.load = load
 
         busyStreak = load > 0.70 ? busyStreak + 1 : 0
         var next = isBusy

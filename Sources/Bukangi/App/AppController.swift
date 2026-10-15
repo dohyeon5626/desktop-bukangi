@@ -228,13 +228,26 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     // MARK: Menu
 
-    private func buildMenu() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = statusItem.button {
-            let img = NSImage(systemSymbolName: "fish.fill", accessibilityDescription: "부캉이")
-            img?.isTemplate = true
-            button.image = img
+    private let iconFrames = (0..<StatusIcon.frameCount).map(StatusIcon.frame)
+    private var iconFrame = 0
+
+    /// Like RunCat: the little shark in the menu bar swims faster the busier the Mac is.
+    private func scheduleIconFrame() {
+        let fps = 5 + 17 * min(1, loadMonitor.load * 1.3)
+        let timer = Timer(timeInterval: 1 / fps, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            iconFrame = (iconFrame + 1) % iconFrames.count
+            statusItem.button?.image = iconFrames[iconFrame]
+            scheduleIconFrame()
         }
+        timer.tolerance = 0.01
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func buildMenu() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.button?.image = iconFrames[0]
+        scheduleIconFrame()
         let menu = NSMenu()
         menu.autoenablesItems = false
         let title = NSMenuItem(title: "부캉이", action: nil, keyEquivalent: "")
