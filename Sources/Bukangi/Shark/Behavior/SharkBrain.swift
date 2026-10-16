@@ -18,7 +18,7 @@ enum SharkLayer: Equatable {
 
 /// Motion, behaviour and spine of Bukangi, seen from above.
 final class SharkBrain {
-    enum Kind { case cruise, deep, surface, hide, skim, circle, rest, flee, summon, curious }
+    enum Kind { case cruise, deep, surface, hide, skim, circle, rest, flee, summon, curious, called }
 
     struct Plan {
         var kind: Kind
@@ -82,6 +82,9 @@ final class SharkBrain {
     /// 0...1: how surfaced (and so how cute) she looks.
     private(set) var cute = 0.0
     var mouseIdle = 0.0
+    private var shakeTurns: [Double] = []
+    private var lastShakeDirection = 0
+    private var lastCalled = -10.0
 
     var screens: [CGRect] = []
     var windows: [TrackedWindow] = []
@@ -144,8 +147,33 @@ final class SharkBrain {
             mouseVel = CGVector(dx: mouseVel.dx * 0.6 + v.dx * 0.4, dy: mouseVel.dy * 0.6 + v.dy * 0.4)
         }
         if hypot(mouseVel.dx, mouseVel.dy) < 30 { mouseIdle += dt } else { mouseIdle = 0 }
+        if hasMouse && dt > 0 { detectShake(dx: (p.x - mouse.x) / dt) }
         mouse = p
         hasMouse = true
+    }
+
+    /// Shaking the mouse (fast side-to-side, the gesture that makes macOS enlarge the cursor)
+    /// calls her over.
+    private func detectShake(dx: CGFloat) {
+        guard abs(dx) > 900 else { return }
+        let direction = dx > 0 ? 1 : -1
+        if direction != lastShakeDirection {
+            lastShakeDirection = direction
+            shakeTurns = shakeTurns.filter { time - $0 < 0.7 } + [time]
+        }
+        if shakeTurns.count >= 4 && time - lastCalled > 3 {
+            lastCalled = time
+            shakeTurns.removeAll()
+            comeToMouse()
+        }
+    }
+
+    private func comeToMouse() {
+        var p = Plan(kind: .called)
+        p.timeLeft = 14
+        p.wander = 0.1
+        requestLayer(.top, depth: 0)
+        plan = p
     }
 
     /// Busy Mac: sink to the bottom and drift.
@@ -192,7 +220,7 @@ final class SharkBrain {
             target = e
             spd = max(spd, 75)
         }
-        let paced = [.flee, .summon, .curious].contains(plan.kind) ? 1.0 : energy
+        let paced = [.flee, .summon, .curious, .called].contains(plan.kind) ? 1.0 : energy
         desiredSpeed = spd * CGFloat(paced)
         steer(toward: target, dt: dt)
         updateMood(dt)
@@ -216,7 +244,7 @@ final class SharkBrain {
         cute += ((layer == .top ? max(0, 1 - depth * 1.6) : 0) - cute) * min(1, dt * 1.5)
 
         // Don't stay invisible under windows for too long.
-        if isCovered(center) && plan.kind != .flee && !calm {
+        if isCovered(center) && plan.kind != .flee && plan.kind != .called && !calm {
             coveredTime += dt
             if coveredTime > 4 {
                 coveredTime = 0
@@ -258,7 +286,7 @@ final class SharkBrain {
     // MARK: Mouse
 
     func reactToMouse() {
-        guard hasMouse, !spine.isEmpty else { return }
+        guard hasMouse, !spine.isEmpty, plan.kind != .called else { return }
         var best = CGFloat.greatestFiniteMagnitude
         var nearest = head
         for i in stride(from: 0, to: spine.count, by: 2) {
@@ -298,7 +326,7 @@ final class SharkBrain {
         let dl = max(hypot(dx, dy), 1e-3)
         dx /= dl; dy /= dl
 
-        if hasMouse && !isCovered(center) {
+        if hasMouse && plan.kind != .called && !isCovered(center) {
             let c = center
             let mx = Double(c.x - mouse.x), my = Double(c.y - mouse.y)
             let md = hypot(mx, my), R = Double(L) * 0.85

@@ -7,6 +7,7 @@ extension SharkBrain {
         plan.stageTime += dt
         switch plan.kind {
         case .curious: return curiousTarget()
+        case .called: return calledTarget()
         case .cruise, .deep, .surface, .rest, .summon:
             if plan.timeLeft <= 0 { return nil }
             guard !plan.waypoints.isEmpty else { return nil }
@@ -159,6 +160,26 @@ extension SharkBrain {
             if plan.stageTime > plan.hold { return nil }
             wiggle = max(wiggle, 0.25)
             return (mouse, 16)
+        }
+    }
+
+    func calledTarget() -> (CGPoint, CGFloat)? {
+        if plan.timeLeft <= 0 || !covers(mouse) { return nil }
+        switch plan.stage {
+        case 0:
+            if dist(mouse, head) < L * 0.45 {
+                plan.stage = 1
+                plan.stageTime = 0
+                wiggle = 1.4
+            }
+            let d = dist(mouse, head)
+            return (mouse, min(420, 140 + d * 0.9))
+        default:
+            if plan.stageTime > 3.5 { return nil }
+            let c = center
+            let a = atan2(Double(c.y - mouse.y), Double(c.x - mouse.x)) + 0.8
+            let r = L * 0.55
+            return (CGPoint(x: mouse.x + r * CGFloat(cos(a)), y: mouse.y + r * CGFloat(sin(a))), 45)
         }
     }
 
@@ -369,7 +390,7 @@ extension SharkBrain {
             p.timeLeft = 16
             p.wander = 0.25
             requestLayer(.top, depth: 0.05)
-        case .flee, .summon:
+        case .flee, .summon, .called:
             break
         }
         plan = p
