@@ -16,8 +16,17 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var running = false
     private var statusItem: NSStatusItem!
 
-    /// Body length as a fraction of the main display's width.
-    private let sizeFraction: CGFloat = 0.17
+    private enum Size: Int, CaseIterable {
+        case small, medium, large
+        var title: String { ["작게", "보통", "크게"][rawValue] }
+        /// Body length as a fraction of the main display's width.
+        var fraction: CGFloat { [0.095, 0.13, 0.17][rawValue] }
+    }
+
+    private var size: Size {
+        get { Size(rawValue: UserDefaults.standard.object(forKey: "bodySize") as? Int ?? Size.large.rawValue) ?? .large }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "bodySize"); applySize() }
+    }
 
     // MARK: Lifecycle
 
@@ -122,7 +131,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func applySize() {
         let main = NSScreen.screens.first?.frame ?? CGRect(x: 0, y: 0, width: 1512, height: 982)
-        brain.length = max(180, min(main.width, main.height * 1.6) * sizeFraction)
+        brain.length = max(120, min(main.width, main.height * 1.6) * size.fraction)
     }
 
     private func start() {
@@ -371,6 +380,18 @@ final class AppController: NSObject, NSApplicationDelegate {
         call.target = self
         menu.addItem(call)
 
+        let sizeItem = NSMenuItem(title: "크기", action: nil, keyEquivalent: "")
+        let sizeMenu = NSMenu()
+        for option in Size.allCases.reversed() {
+            let item = NSMenuItem(title: option.title, action: #selector(setSize(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = option.rawValue
+            item.state = option == size ? .on : .off
+            sizeMenu.addItem(item)
+        }
+        sizeItem.submenu = sizeMenu
+        menu.addItem(sizeItem)
+
         let displays = NSMenuItem(title: "디스플레이", action: nil, keyEquivalent: "")
         displays.submenu = displayMenu
         menu.addItem(displays)
@@ -383,6 +404,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
+    }
+
+    @objc private func setSize(_ sender: NSMenuItem) {
+        size = Size(rawValue: sender.tag) ?? .large
+        sender.menu?.items.forEach { $0.state = $0.tag == sender.tag ? .on : .off }
     }
 
     @objc private func toggleVisible(_ sender: NSMenuItem) {
