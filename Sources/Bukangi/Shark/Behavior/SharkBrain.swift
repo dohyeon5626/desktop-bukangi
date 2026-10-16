@@ -294,7 +294,8 @@ final class SharkBrain {
         let diff = wrapAngle(desired - heading)
 
         let fleeing = plan.kind == .flee
-        var maxTurn = 0.3 + Double(speed) / Double(L * 0.34)
+        // Never turn tighter than the body can follow (radius ~half a body length).
+        var maxTurn = 0.04 + Double(speed) / Double(L * 0.5)
         maxTurn = min(maxTurn, fleeing ? 2.6 : 1.5)
         let wantTurn = max(-maxTurn, min(maxTurn, diff * (fleeing ? 2.4 : 1.3)))
         turnRate += (wantTurn - turnRate) * min(1, dt * (fleeing ? 4 : 2.0))
@@ -304,7 +305,7 @@ final class SharkBrain {
         let breathe = 1 + 0.12 * sin(time * 0.37 + seedA)
         let ts = desiredSpeed * CGFloat(1 - 0.35 * min(1, abs(diff) / .pi)) * CGFloat(fleeing ? 1 : breathe)
         speed += (ts - speed) * CGFloat(min(1, dt * (ts > speed ? (fleeing ? 4.0 : 1.2) : 0.6)))
-        speed = max(speed, 10)
+        speed = max(speed, 16)
         head.x += CGFloat(cos(heading)) * speed * CGFloat(dt)
         head.y += CGFloat(sin(heading)) * speed * CGFloat(dt)
 
@@ -322,10 +323,10 @@ final class SharkBrain {
         let freq = min(3.6, max(0.36, Double(speed) / (0.62 * Double(L))) + thrust * 0.6 + 1.6 * wig)
         tailPhase += 2 * .pi * freq * dt
 
-        // Path history for follow-the-leader.
-        if let last = history.last, dist(last, head) < 0.75 {
-            history[history.count - 1] = head
-        } else {
+        // Path history for follow-the-leader: commit a point every so often along the way.
+        // (Measuring from the last committed point, not last frame's head, so slow swimming
+        // still records its curve instead of one long straight chord.)
+        if history.last.map({ dist($0, head) >= 1.0 }) ?? true {
             history.append(head)
         }
         if history.count > 64 {
@@ -347,20 +348,22 @@ final class SharkBrain {
         let seg = Lp / Double(n - 1)
         var base = [CGPoint](repeating: head, count: n)
         var tang = [Double](repeating: heading, count: n)
-        var idx = history.count - 1
+        // The live head is always the newest point of the path.
+        let path = dist(history.last ?? head, head) > 0.01 ? history + [head] : history
+        var idx = path.count - 1
         var acc = 0.0
         var segDir = heading
         for i in 1..<n {
             let target = Double(i) * seg
             while true {
                 if idx <= 0 {
-                    let p = history.first ?? head
+                    let p = path.first ?? head
                     let rem = target - acc
                     base[i] = CGPoint(x: p.x - CGFloat(cos(segDir) * rem), y: p.y - CGFloat(sin(segDir) * rem))
                     tang[i] = segDir
                     break
                 }
-                let a = history[idx], b = history[idx - 1]
+                let a = path[idx], b = path[idx - 1]
                 let d = Double(dist(a, b))
                 if d > 1e-6 { segDir = atan2(Double(a.y - b.y), Double(a.x - b.x)) }
                 if acc + d >= target {
@@ -383,16 +386,20 @@ final class SharkBrain {
             let lat = Lp * tailAmp * env * sin(tailPhase - k * s)
             pts[i] = CGPoint(x: base[i].x - CGFloat(sin(tang[i]) * lat), y: base[i].y + CGFloat(cos(tang[i]) * lat))
         }
-        // Keep segment lengths constant and never let one joint bend sharply.
-        let maxBend = 0.16
-        var prevDir = atan2(Double(pts[0].y - pts[1].y), Double(pts[0].x - pts[1].x))
+        // Rebuild the body from the head out with fixed segment lengths. Each joint's bend comes
+        // from the target curve itself and eases toward a soft limit, so the body can't kink and
+        // never snaps from one side to the other.
+        let maxBend = 0.17
+        var targetDir = [Double](repeating: heading, count: n)
         for i in 1..<n {
-            var dir = atan2(Double(pts[i - 1].y - pts[i].y), Double(pts[i - 1].x - pts[i].x))
+            targetDir[i] = atan2(Double(pts[i - 1].y - pts[i].y), Double(pts[i - 1].x - pts[i].x))
+        }
+        var dir = targetDir[1]
+        for i in 1..<n {
             if i > 1 {
-                let bend = wrapAngle(dir - prevDir)
-                dir = prevDir + max(-maxBend, min(maxBend, bend))
+                let bend = wrapAngle(targetDir[i] - targetDir[i - 1])
+                dir += maxBend * tanh(bend / maxBend)
             }
-            prevDir = dir
             pts[i] = CGPoint(x: pts[i - 1].x - CGFloat(cos(dir) * seg), y: pts[i - 1].y - CGFloat(sin(dir) * seg))
         }
         var angles = [Double](repeating: heading, count: n)
