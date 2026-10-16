@@ -41,24 +41,38 @@ enum SnapshotTool {
         renderer.scene = rig.scene
         renderer.pointOfView = cam
 
-        struct Shot { var roll = 0.0; var name: String; var curvature: Double; var phase: Double; var amp: Double; var depth: Double; var heading: Double }
+        struct Shot {
+            var roll = 0.0; var name: String; var curvature: Double; var phase: Double; var amp: Double; var depth: Double; var heading: Double
+            var tailDepth: Double? = nil; var fins = [0.0, 0.0]; var sweeps = [0.0, 0.0]
+        }
         let shots = [
             Shot(name: "straight", curvature: 0, phase: 0.6, amp: 0.05, depth: 0, heading: 0.15),
             Shot(name: "turn", curvature: 2.4, phase: 2.0, amp: 0.05, depth: 0, heading: 1.2),
             Shot(roll: 1.45, name: "rolled", curvature: 0, phase: 0.6, amp: 0.02, depth: 0, heading: 0.0),
             Shot(name: "deep", curvature: 0.6, phase: 4.0, amp: 0.05, depth: 1, heading: -2.6),
+            Shot(name: "diving", curvature: 0, phase: 0.6, amp: 0.05, depth: 0.9, heading: 0.15, tailDepth: 0.0, fins: [-0.32, -0.32]),
+            Shot(roll: -0.5, name: "banking", curvature: 1.6, phase: 1.0, amp: 0.04, depth: 0, heading: 0.9, fins: [0.24, -0.24], sweeps: [0.3, -0.3]),
         ]
         for s in shots {
-            let L = 620.0 * (1 - 0.24 * s.depth)
+            let n = SharkMesh.boneCount
+            let depths = (0..<n).map { s.depth + ((s.tailDepth ?? s.depth) - s.depth) * Double($0) / Double(n - 1) }
+            let meanDepth = depths.reduce(0, +) / Double(n)
+            let L = 620.0 * SharkBrain.scale(forDepth: meanDepth)
             let head = CGPoint(x: 700 + cos(s.heading) * L * 0.5, y: 400 + sin(s.heading) * L * 0.5)
             let (pts, angles) = pose(head: head, heading: s.heading, curvature: s.curvature, phase: s.phase, amp: s.amp, length: L)
-            let h = 1 - s.depth
-            rig.apply(SharkPose(bones: pts, angles: angles, roll: s.roll, length: L,
-                                caustic: 0.55 * h, tint: 0.5 * s.depth,
-                                shadowOpacity: 0.32 * max(0, 1 - s.depth / 0.6), shadowOffset: CGVector(dx: L * (0.02 + 0.08 * h), dy: -L * (0.03 + 0.11 * h)),
+            let h = 1 - meanDepth
+            let seg = L / Double(n - 1)
+            let pitches = (0..<n).map { i -> Double in
+                let a = max(i - 1, 0), b = min(i + 1, n - 1)
+                return max(-0.5, min(0.5, atan((depths[b] - depths[a]) * 620 / (seg * Double(b - a)))))
+            }
+            rig.apply(SharkPose(bones: pts, angles: angles, roll: s.roll,
+                                scales: depths.map { 620 * SharkBrain.scale(forDepth: $0) }, pitches: pitches, finAngles: s.fins, finSweeps: s.sweeps,
+                                caustic: 0.55 * h, tintHead: 0.52 * pow(depths[0], 1.2), tintTail: 0.52 * pow(depths[n - 1], 1.2),
+                                shadowOpacity: 0.32 * max(0, 1 - meanDepth / 0.6), shadowOffset: CGVector(dx: L * (0.03 + 0.11 * h), dy: -L * (0.04 + 0.15 * h)),
                                 shadowSoftness: h, cute: h))
             // Same blur the app uses: a touch at the surface, much more when deep.
-            renderer.technique = BlurTechnique.make(level: s.depth > 0.5 ? 7 : 0)
+            renderer.technique = BlurTechnique.make(level: BlurTechnique.level(forPixels: max(2.0, 7.0 * pow(meanDepth, 1.4) * 2)) ?? 0)
             let img = renderer.snapshot(atTime: 1.0, with: frame.size, antialiasingMode: .multisampling4X)
             let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "\(outDir)/\(s.name).png"))
