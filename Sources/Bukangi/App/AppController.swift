@@ -41,22 +41,77 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func buildOverlays() {
         overlays.forEach { $0.hide() }
-        overlays = NSScreen.screens.map { Overlay(screen: $0, device: sharkRenderer.device) }
-        backing = NSScreen.screens.first?.backingScaleFactor ?? 2
-        let frames = overlays.map(\.frame)
-        tracker.configure(primaryHeight: NSScreen.screens.first?.frame.height ?? 0, screens: frames)
-        brain.screens = frames
+        knownScreenFrames = NSScreen.screens.map(\.frame)
+        let allowed = allowedScreens()
+        overlays = allowed.map { Overlay(screen: $0, device: sharkRenderer.device) }
+        backing = allowed.first?.backingScaleFactor ?? 2
+        tracker.configure(primaryHeight: NSScreen.screens.first?.frame.height ?? 0, screens: knownScreenFrames)
+        brain.screens = overlays.map(\.frame)
         if running { overlays.forEach { $0.show() } }
         restartDisplayLink()
+        rebuildDisplayMenu()
     }
 
     @objc private func screensChanged() {
-        if NSScreen.screens.map(\.frame) != overlays.map(\.frame) {
+        if NSScreen.screens.map(\.frame) != knownScreenFrames {
             buildOverlays()
             applySize()
         } else if running {
             overlays.forEach { $0.show() }
         }
+    }
+
+    // MARK: Displays
+
+    private var knownScreenFrames: [CGRect] = []
+    private let displayMenu = NSMenu()
+
+    /// Displays the user turned off, by display UUID, so new displays are allowed by default.
+    private var disabledDisplays: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "disabledDisplays") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue).sorted(), forKey: "disabledDisplays") }
+    }
+
+    private func displayUUID(_ screen: NSScreen) -> String {
+        let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        let id = CGDirectDisplayID(number?.uint32Value ?? 0)
+        guard let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return "\(id)" }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
+
+    private func allowedScreens() -> [NSScreen] {
+        let disabled = disabledDisplays
+        let allowed = NSScreen.screens.filter { !disabled.contains(displayUUID($0)) }
+        return allowed.isEmpty ? NSScreen.screens : allowed
+    }
+
+    private func rebuildDisplayMenu() {
+        displayMenu.removeAllItems()
+        let allowed = Set(allowedScreens().map(displayUUID))
+        for screen in NSScreen.screens {
+            let id = displayUUID(screen)
+            let item = NSMenuItem(title: screen.localizedName, action: #selector(toggleDisplay(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = id
+            item.state = allowed.contains(id) ? .on : .off
+            item.isEnabled = NSScreen.screens.count > 1
+            displayMenu.addItem(item)
+        }
+    }
+
+    @objc private func toggleDisplay(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        var disabled = disabledDisplays
+        if disabled.contains(id) {
+            disabled.remove(id)
+        } else {
+            let stillAllowed = NSScreen.screens.map(displayUUID).filter { $0 != id && !disabled.contains($0) }
+            guard !stillAllowed.isEmpty else { return }
+            disabled.insert(id)
+        }
+        disabledDisplays = disabled
+        buildOverlays()
+        applySize()
     }
 
     @objc private func spaceChanged() {
@@ -315,6 +370,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         let call = NSMenuItem(title: "수면으로 부르기", action: #selector(summon), keyEquivalent: "s")
         call.target = self
         menu.addItem(call)
+
+        let displays = NSMenuItem(title: "디스플레이", action: nil, keyEquivalent: "")
+        displays.submenu = displayMenu
+        menu.addItem(displays)
 
         let login = NSMenuItem(title: "로그인 시 실행", action: #selector(toggleLogin(_:)), keyEquivalent: "")
         login.target = self
