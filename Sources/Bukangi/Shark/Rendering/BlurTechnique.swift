@@ -35,6 +35,19 @@ enum BlurTechnique {
         return acc / half(wsum);
     }
 
+    // The final target is sRGB, which gamma-encodes each colour channel of premultiplied
+    // pixels on its own and lifts soft, semi-transparent edges into a bright halo. Pre-correct
+    // so the stored value is the colour encoded first and premultiplied after.
+    static half4 bk_store_srgb(half4 p) {
+        float a = float(p.a);
+        if (a <= 0.0001) { return half4(0.0); }
+        float3 c = clamp(float3(p.rgb) / a, 0.0, 1.0);
+        float3 enc = select(1.055 * pow(c, 1.0 / 2.4) - 0.055, c * 12.92, c <= 0.0031308);
+        float3 o = enc * a;
+        float3 lin = select(pow((o + 0.055) / 1.055, 2.4), o / 12.92, o <= 0.04045);
+        return half4(half3(lin), half(a));
+    }
+
     BK_LEVEL_FUNCTIONS
     """
 
@@ -50,7 +63,7 @@ enum BlurTechnique {
                 return bk_blur(colorSampler, in.uv, float2(1.0, 0.0), \(r));
             }
             fragment half4 bk_blur_v_\(i)(BKOut in [[stage_in]], texture2d<half, access::sample> colorSampler [[texture(0)]]) {
-                return bk_blur(colorSampler, in.uv, float2(0.0, 1.0), \(r));
+                return bk_store_srgb(bk_blur(colorSampler, in.uv, float2(0.0, 1.0), \(r)));
             }
 
             """
