@@ -126,11 +126,6 @@ final class Overlay {
         }
     }
 
-    func setAlpha(_ a: CGFloat) {
-        let f = Float(a)
-        if abs(metalLayer.opacity - f) > 0.002 { metalLayer.opacity = f }
-    }
-
     /// A single small ring left behind as she swims along the surface.
     func wake(at p: CGPoint, size: CGFloat) {
         guard let host = rippleView.layer else { return }

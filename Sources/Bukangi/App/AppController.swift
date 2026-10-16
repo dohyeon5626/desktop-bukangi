@@ -247,12 +247,10 @@ final class AppController: NSObject, NSApplicationDelegate {
             return
         }
         hiddenUnderWindow = false
-        let alpha = CGFloat(1 - 0.36 * brain.depth)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for o in overlays where o.place(region: region) {
             o.updateMask(items)
-            o.setAlpha(alpha)
             sharkRenderer.render(region: region, into: o.metalLayer, time: time)
         }
         CATransaction.commit()
