@@ -13,7 +13,7 @@ final class Overlay {
     private let rippleView: NSView
     private let maskLayer = CALayer()
     private var maskShapes: [CAShapeLayer] = []
-    private var lastMask: [(CGRect, CGFloat)] = []
+    private var lastMask: [(CGRect, CGFloat, [CGRect])] = []
     private var visibleNow = false
 
     init(screen: NSScreen, device: MTLDevice) {
@@ -73,11 +73,12 @@ final class Overlay {
     /// `items`: windows that should hide the shark, with how strongly (0...1), in global points.
     /// The mask lives on the small shark layer only (and is dropped when nothing covers her),
     /// so the window server never has to composite a full-screen offscreen pass.
-    func updateMask(_ items: [(CGRect, CGFloat)]) {
+    func updateMask(_ items: [(CGRect, CGFloat, [CGRect])]) {
         let region = metalLayer.frame.offsetBy(dx: frame.minX, dy: frame.minY)
-        let local: [(CGRect, CGFloat)] = items.compactMap { r, a in
+        let local: [(CGRect, CGFloat, [CGRect])] = items.compactMap { r, a, hidden in
             guard a > 0.01, r.intersects(region) else { return nil }
-            return (r.offsetBy(dx: -region.minX, dy: -region.minY), a)
+            return (r.offsetBy(dx: -region.minX, dy: -region.minY), a,
+                    hidden.map { $0.offsetBy(dx: -region.minX, dy: -region.minY) })
         }
         if local.isEmpty {
             if metalLayer.mask != nil { metalLayer.mask = nil }
@@ -86,11 +87,18 @@ final class Overlay {
         }
         if metalLayer.mask == nil { metalLayer.mask = maskLayer }
         maskLayer.frame = metalLayer.bounds
-        if local.count == lastMask.count && zip(local, lastMask).allSatisfy({ $0.0 == $1.0 && abs($0.1 - $1.1) < 0.002 }) { return }
+        if local.count == lastMask.count
+            && zip(local, lastMask).allSatisfy({ $0.0 == $1.0 && abs($0.1 - $1.1) < 0.002 && $0.2 == $1.2 }) { return }
         lastMask = local
 
         let bounds = metalLayer.bounds
-        let paths = local.map { (CGPath(roundedRect: $0.0, cornerWidth: 12, cornerHeight: 12, transform: nil), $0.1) }
+        let paths = local.map { r, a, hidden -> (CGPath, CGFloat) in
+            let window = CGPath(roundedRect: r, cornerWidth: 12, cornerHeight: 12, transform: nil)
+            guard !hidden.isEmpty else { return (window, a) }
+            let covering = CGMutablePath()
+            hidden.forEach { covering.addRect($0) }
+            return (window.subtracting(covering), a)
+        }
         var shapes: [(CGPath, Float)] = []
         let all = CGMutablePath()
         for (p, _) in paths { all.addPath(p) }

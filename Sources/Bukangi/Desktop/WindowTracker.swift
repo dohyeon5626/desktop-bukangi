@@ -4,6 +4,12 @@ struct TrackedWindow {
     let id: CGWindowID
     /// Cocoa global coordinates (origin bottom-left of the primary screen).
     let frame: CGRect
+    /// Seabed windows stacked in front of this one; the parts they cover can't hide the shark.
+    var hiddenBy: [CGRect] = []
+
+    func shows(_ p: CGPoint) -> Bool {
+        frame.contains(p) && !hiddenBy.contains { $0.contains(p) }
+    }
 }
 
 /// Reads the on-screen window stack (front to back) on a background queue, without needing
@@ -68,15 +74,24 @@ final class WindowTracker {
         }
         // Full-screen and maximized windows are the seabed; so are their own panels and sheets.
         var seabed: [(pid: Int32, screen: CGRect)] = []
+        var seabedFrames = Set<CGWindowID>()
         for r in raws {
             if let s = scr.first(where: { s in
                 let i = s.intersection(r.frame)
                 return !i.isNull && i.width * i.height >= s.width * s.height * 0.80
-            }) { seabed.append((r.pid, s)) }
+            }) {
+                seabed.append((r.pid, s))
+                seabedFrames.insert(r.id)
+            }
         }
-        let out = raws.compactMap { r -> TrackedWindow? in
-            if seabed.contains(where: { $0.pid == r.pid && $0.screen.intersects(r.frame) }) { return nil }
-            return TrackedWindow(id: r.id, frame: r.frame)
+        var out: [TrackedWindow] = []
+        var seabedInFront: [CGRect] = []
+        for r in raws {
+            if seabedFrames.contains(r.id) { seabedInFront.append(r.frame); continue }
+            if seabed.contains(where: { $0.pid == r.pid && $0.screen.intersects(r.frame) }) { continue }
+            let hidden = seabedInFront.filter { $0.intersects(r.frame) }
+            if hidden.contains(where: { $0.contains(r.frame) }) { continue }
+            out.append(TrackedWindow(id: r.id, frame: r.frame, hiddenBy: hidden))
         }
         lock.lock()
         _windows = out

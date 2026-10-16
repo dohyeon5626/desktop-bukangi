@@ -224,7 +224,7 @@ extension SharkBrain {
         for (i, w) in windows.enumerated() {
             let f = w.frame
             let front = windows[..<i]
-            func clear(_ p: CGPoint) -> Bool { covers(p) && !front.contains { $0.frame.contains(p) } }
+            func clear(_ p: CGPoint) -> Bool { covers(p) && !front.contains { $0.shows(p) } }
             let o = L * 0.12
             if f.width > L * 2.0 {
                 if clear(CGPoint(x: f.midX, y: f.maxY + o)) && clear(CGPoint(x: f.minX + L, y: f.maxY + o)) { out.append((w, 2)) }

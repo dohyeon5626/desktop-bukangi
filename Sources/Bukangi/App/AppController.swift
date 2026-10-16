@@ -230,11 +230,13 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func present(time: CFTimeInterval) {
         let region = renderRegion()
-        let items = brain.windows.compactMap { w -> (CGRect, CGFloat)? in
+        let items = brain.windows.compactMap { w -> (CGRect, CGFloat, [CGRect])? in
             let a = occlusion[w.id] ?? 0
-            return a > 0.01 && w.frame.intersects(region) ? (w.frame, a) : nil
+            return a > 0.01 && w.frame.intersects(region) ? (w.frame, a, w.hiddenBy) : nil
         }
-        let covered = brain.windows.contains { (occlusion[$0.id] ?? 0) > 0.99 && $0.frame.contains(region) }
+        let covered = brain.windows.contains { w in
+            (occlusion[w.id] ?? 0) > 0.99 && w.frame.contains(region) && !w.hiddenBy.contains { $0.intersects(region) }
+        }
         if covered {
             if !hiddenUnderWindow {
                 hiddenUnderWindow = true

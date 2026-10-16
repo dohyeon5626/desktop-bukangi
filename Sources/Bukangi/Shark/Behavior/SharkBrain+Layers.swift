@@ -13,7 +13,7 @@ extension SharkBrain {
     }
 
     func isCovered(_ p: CGPoint) -> Bool {
-        frontWindows.contains { $0.frame.contains(p) }
+        frontWindows.contains { $0.shows(p) }
     }
 
     func window(_ id: CGWindowID?) -> TrackedWindow? {
@@ -66,7 +66,7 @@ extension SharkBrain {
         let margin = L * 0.2
         func overlaps(_ w: TrackedWindow) -> Bool {
             let f = w.frame.insetBy(dx: -margin, dy: -margin)
-            return spine.contains { f.contains($0) }
+            return spine.contains { p in f.contains(p) && !w.hiddenBy.contains { $0.contains(p) } }
         }
         // Step through the stack one window at a time while she is clear of that window.
         var blocker: TrackedWindow?
