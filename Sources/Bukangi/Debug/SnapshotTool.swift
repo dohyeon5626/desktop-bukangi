@@ -55,13 +55,10 @@ enum SnapshotTool {
             let h = 1 - s.depth
             rig.apply(SharkPose(bones: pts, angles: angles, roll: s.roll, length: L,
                                 caustic: 0.55 * h, tint: 0.5 * s.depth,
-                                shadowOpacity: 0.32, shadowOffset: CGVector(dx: L * (0.02 + 0.08 * h), dy: -L * (0.03 + 0.11 * h)),
+                                shadowOpacity: 0.32 * max(0, 1 - s.depth / 0.6), shadowOffset: CGVector(dx: L * (0.02 + 0.08 * h), dy: -L * (0.03 + 0.11 * h)),
                                 shadowSoftness: h, cute: h))
-            if s.depth > 0.5, let t = BlurTechnique.make(level: 7) {
-                renderer.technique = t
-            } else {
-                renderer.technique = nil
-            }
+            // Same blur the app uses: a touch at the surface, much more when deep.
+            renderer.technique = BlurTechnique.make(level: s.depth > 0.5 ? 7 : 0)
             let img = renderer.snapshot(atTime: 1.0, with: frame.size, antialiasingMode: .multisampling4X)
             let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "\(outDir)/\(s.name).png"))
