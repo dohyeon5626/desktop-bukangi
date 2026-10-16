@@ -29,7 +29,6 @@ final class SharkBrain {
         var stageTime: Double = 0
         var hold: Double = 0
         var window: CGWindowID?
-        var rel = CGPoint(x: 0.5, y: 0.5)
         var edge = 0
         var along: CGFloat = 0.5
         var dir: CGFloat = 1
@@ -217,12 +216,26 @@ final class SharkBrain {
         cute += ((layer == .top ? max(0, 1 - depth * 1.6) : 0) - cute) * min(1, dt * 1.5)
 
         // Don't stay invisible under windows for too long.
-        if isCovered(center) && plan.kind != .hide && plan.kind != .skim && !calm {
+        if isCovered(center) && plan.kind != .flee && !calm {
             coveredTime += dt
-            if coveredTime > 10 {
+            if coveredTime > 4 {
                 coveredTime = 0
-                nextPlan(preferred: Bool.random() ? .surface : .cruise)
-                if case .under = layer, Bool.random() { requestLayer(.top, depth: 0) }
+                // Swim out past the nearest edge and come up over the window there.
+                if let w = windows.first(where: { $0.shows(center) }) {
+                    let f = w.frame, out = L * 0.55
+                    let exits = [CGPoint(x: f.maxX + out, y: head.y), CGPoint(x: f.minX - out, y: head.y),
+                                 CGPoint(x: head.x, y: f.maxY + out), CGPoint(x: head.x, y: f.minY - out)]
+                        .filter { covers($0) }
+                    let open = exits.filter { p in !windows.contains { $0.shows(p) } }
+                    if let p = (open.isEmpty ? exits : open).min(by: { dist($0, head) < dist($1, head) }) {
+                        var exit = Plan(kind: .cruise)
+                        exit.waypoints = [p]
+                        exit.speed = 150
+                        exit.timeLeft = 12
+                        plan = exit
+                    }
+                }
+                requestLayer(.top, depth: 0.1)
             }
         } else {
             coveredTime = 0

@@ -46,10 +46,35 @@ extension SharkBrain {
         }
     }
 
+    /// `offset` is in body lengths outside the edge; negative is inside.
+    func pointNearEdge(of w: CGRect, offset: ClosedRange<CGFloat>) -> CGPoint? {
+        let o = CGFloat.random(in: offset) * L
+        let t = CGFloat.random(in: 0.2...0.8)
+        let candidates = [
+            CGPoint(x: w.maxX + o, y: w.minY + w.height * t), CGPoint(x: w.minX - o, y: w.minY + w.height * t),
+            CGPoint(x: w.minX + w.width * t, y: w.maxY + o), CGPoint(x: w.minX + w.width * t, y: w.minY - o),
+        ].filter { p in screens.contains { $0.insetBy(dx: L * 0.3, dy: L * 0.25).contains(p) } }
+        return candidates.randomElement()
+    }
+
+    func edgeWaypoints(_ n: Int) -> [CGPoint] {
+        var out: [CGPoint] = []
+        var lastWindow: CGWindowID?
+        for _ in 0..<n {
+            let pool = windows.filter { $0.id != lastWindow && $0.frame.width > L * 0.6 && $0.frame.height > L * 0.4 }
+            if Double.random(in: 0...1) < 0.8, let w = pool.randomElement(), let p = pointNearEdge(of: w.frame, offset: -0.2...0.25) {
+                out.append(p)
+                lastWindow = w.id
+            } else if let p = randomPoint(awayFrom: out.last ?? head) {
+                out.append(p)
+            }
+        }
+        return out
+    }
+
     func hideTarget() -> (CGPoint, CGFloat)? {
         guard let w = window(plan.window)?.frame else { return nil }
         let inner = w.insetBy(dx: min(L * 0.3, w.width * 0.3), dy: min(L * 0.25, w.height * 0.3))
-        func relPoint(_ r: CGPoint) -> CGPoint { CGPoint(x: inner.minX + inner.width * r.x, y: inner.minY + inner.height * r.y) }
         let normals = [CGVector(dx: 1, dy: 0), CGVector(dx: -1, dy: 0), CGVector(dx: 0, dy: 1), CGVector(dx: 0, dy: -1)]
         func edgePoint() -> CGPoint {
             switch plan.edge {
@@ -62,13 +87,14 @@ extension SharkBrain {
         let n = normals[plan.edge]
         switch plan.stage {
         case 0:
-            if inner.contains(center) { plan.stage = 1; plan.stageTime = 0 }
+            if plan.center == .zero { plan.center = pointNearEdge(of: w, offset: -0.1...0.05) ?? CGPoint(x: w.midX, y: w.midY) }
+            if inner.contains(center) || dist(plan.center, head) < L * 0.3 { plan.stage = 1; plan.stageTime = 0 }
             if plan.timeLeft <= 0 { return nil }
-            return (CGPoint(x: w.midX, y: w.midY), plan.speed)
+            return (plan.center, plan.speed)
         case 1:
             plan.wander = 0.6
-            if dist(relPoint(plan.rel), head) < L * 0.3 {
-                plan.rel = CGPoint(x: .random(in: 0...1), y: .random(in: 0...1))
+            if dist(plan.center, head) < L * 0.3 {
+                plan.center = pointNearEdge(of: w, offset: -0.1...0.05) ?? plan.center
             }
             if plan.stageTime > plan.hold {
                 guard let e = peekEdge(for: w) else { return nil }
@@ -77,7 +103,7 @@ extension SharkBrain {
                 plan.stage = 2
                 plan.stageTime = 0
             }
-            return (relPoint(plan.rel), 58)
+            return (plan.center, 58)
         case 2:
             plan.wander = 0.2
             let ep = edgePoint()
@@ -100,7 +126,8 @@ extension SharkBrain {
             return (CGPoint(x: ep.x + n.dx * L * 0.7, y: ep.y + n.dy * L * 0.7), 12)
         default:
             plan.wander = 0.3
-            let t = CGPoint(x: w.midX - n.dx * w.width * 0.15, y: w.midY - n.dy * w.height * 0.15)
+            let ep = edgePoint()
+            let t = CGPoint(x: ep.x - n.dx * L * 0.7, y: ep.y - n.dy * L * 0.7)
             if dist(t, head) < L * 0.35 || plan.stageTime > 2.6 {
                 if Double.random(in: 0...1) < 0.35 {
                     plan.stage = 1; plan.stageTime = 0; plan.hold = .random(in: 2...4)
@@ -239,11 +266,11 @@ extension SharkBrain {
     }
 
     func nextPlan(preferred: Kind? = nil) {
-        var options: [(Kind, Double)] = [(.cruise, 16), (.deep, 14), (.surface, 14), (.circle, 12), (.rest, 6 + 22 * (1 - energy))]
+        var options: [(Kind, Double)] = [(.cruise, 16), (.deep, 7), (.surface, 14), (.circle, 12), (.rest, 6 + 22 * (1 - energy))]
         let hides = hideCandidates
         let skims = skimOptions()
-        if !hides.isEmpty { options.append((.hide, 16)) }
-        if !skims.isEmpty { options.append((.skim, 13)) }
+        if !hides.isEmpty { options.append((.hide, 12)) }
+        if !skims.isEmpty { options.append((.skim, 18)) }
         options = options.map { $0.0 == lastKind ? ($0.0, $0.1 * 0.2) : $0 }
         // With windows around, swim over them most of the time (70%) and hide under them less (30%).
         let goAbove = windows.isEmpty ? Bool.random() : Double.random(in: 0...1) < 0.7
@@ -282,7 +309,7 @@ extension SharkBrain {
         }
         switch kind {
         case .cruise:
-            p.waypoints = waypoints(.random(in: 2...4))
+            p.waypoints = goAbove ? waypoints(.random(in: 2...4)) : edgeWaypoints(.random(in: 3...5))
             p.speed = .random(in: 85...120)
             if goAbove {
                 requestLayer(.top, depth: 0.1)
@@ -292,7 +319,7 @@ extension SharkBrain {
                 requestLayer(.bottom, depth: 0.85)
             }
         case .deep:
-            p.waypoints = waypoints(.random(in: 2...3))
+            p.waypoints = edgeWaypoints(.random(in: 2...4))
             p.speed = .random(in: 60...85)
             requestLayer(.bottom, depth: 1)
         case .surface:
@@ -326,7 +353,7 @@ extension SharkBrain {
             let w = hides.randomElement()!
             p.window = w.id
             p.speed = 105
-            p.hold = .random(in: 3.5...7)
+            p.hold = .random(in: 2.5...4.5)
             p.timeLeft = 30
             requestLayer(.under(w.id), depth: 0.5)
         case .skim:

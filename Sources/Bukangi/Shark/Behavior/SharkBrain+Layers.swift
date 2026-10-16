@@ -84,7 +84,7 @@ extension SharkBrain {
         let done = Double(total - abs(goal - current)) / Double(total)
         depthTarget = current == goal ? wantedDepth : startDepth + (wantedDepth - startDepth) * done
 
-        guard let b = blocker, time - pendingSince > 12 else {
+        guard let b = blocker, time - pendingSince > 2 else {
             exitTarget = nil
             return
         }
