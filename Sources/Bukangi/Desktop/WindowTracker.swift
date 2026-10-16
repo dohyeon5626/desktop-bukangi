@@ -39,6 +39,11 @@ final class WindowTracker {
         timer = t
     }
 
+    func stop() {
+        timer?.cancel()
+        timer = nil
+    }
+
     func refreshNow() { queue.sync { poll() } }
 
     private func poll() {

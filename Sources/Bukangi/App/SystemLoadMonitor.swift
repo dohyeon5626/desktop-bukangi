@@ -13,7 +13,14 @@ final class SystemLoadMonitor {
     private var busyStreak = 0
 
     func start() {
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.sample() }
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        lastTicks = nil
     }
 
     private func sample() {

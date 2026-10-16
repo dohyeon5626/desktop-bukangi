@@ -28,7 +28,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         tracker.refreshNow()
         brain.windows = tracker.windows
         brain.reset()
-        tracker.start()
         loadMonitor.onChange = { [weak self] busy in self?.setCalm(busy) }
         loadMonitor.start()
         start()
@@ -37,6 +36,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(spaceChanged),
                                                           name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        observeScreenVisibility()
     }
 
     private func buildOverlays() {
@@ -74,6 +74,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         running = true
         lastTimestamp = 0
         overlays.forEach { $0.show() }
+        if !isSuspended { tracker.start() }
         restartDisplayLink()
     }
 
@@ -81,13 +82,60 @@ final class AppController: NSObject, NSApplicationDelegate {
         running = false
         displayLink?.invalidate()
         displayLink = nil
+        tracker.stop()
         overlays.forEach { $0.hide() }
+    }
+
+    // MARK: Display sleep & lock
+
+    /// Why nobody can see the desktop right now (display asleep, locked, screensaver, other user).
+    /// While any reason holds, rendering, window polling and the menu bar animation all stop.
+    private var unseenReasons = Set<String>()
+    private var isSuspended: Bool { !unseenReasons.isEmpty }
+
+    private func observeScreenVisibility() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        let distributed = DistributedNotificationCenter.default()
+        let pairs: [(NotificationCenter, String, String, String)] = [
+            (workspace, NSWorkspace.screensDidSleepNotification.rawValue, NSWorkspace.screensDidWakeNotification.rawValue, "display"),
+            (workspace, NSWorkspace.sessionDidResignActiveNotification.rawValue, NSWorkspace.sessionDidBecomeActiveNotification.rawValue, "session"),
+            (distributed, "com.apple.screenIsLocked", "com.apple.screenIsUnlocked", "lock"),
+            (distributed, "com.apple.screensaver.didstart", "com.apple.screensaver.didstop", "screensaver"),
+        ]
+        for (center, off, on, reason) in pairs {
+            center.addObserver(forName: Notification.Name(off), object: nil, queue: .main) { [weak self] _ in
+                self?.setUnseen(reason, true)
+            }
+            center.addObserver(forName: Notification.Name(on), object: nil, queue: .main) { [weak self] _ in
+                self?.setUnseen(reason, false)
+            }
+        }
+    }
+
+    private func setUnseen(_ reason: String, _ unseen: Bool) {
+        let wasSuspended = isSuspended
+        if unseen { unseenReasons.insert(reason) } else { unseenReasons.remove(reason) }
+        guard wasSuspended != isSuspended else { return }
+        if isSuspended {
+            displayLink?.invalidate()
+            displayLink = nil
+            tracker.stop()
+            loadMonitor.stop()
+            iconTimer?.invalidate()
+            iconTimer = nil
+        } else {
+            if running { tracker.start() }
+            loadMonitor.start()
+            lastTimestamp = 0
+            restartDisplayLink()
+            scheduleIconFrame()
+        }
     }
 
     private func restartDisplayLink() {
         displayLink?.invalidate()
         displayLink = nil
-        guard running, let view = overlays.first?.displayView else { return }
+        guard running, !isSuspended, let view = overlays.first?.displayView else { return }
         let link = view.displayLink(target: self, selector: #selector(tick(_:)))
         let fps: Float = brain.calm ? 30 : 60
         fastMode = !brain.calm
@@ -225,9 +273,13 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private let iconFrames = (0..<StatusIcon.frameCount).map(StatusIcon.frame)
     private var iconFrame = 0
+    private var iconTimer: Timer?
 
     /// Like RunCat: the little shark in the menu bar swims faster the busier the Mac is.
     private func scheduleIconFrame() {
+        iconTimer?.invalidate()
+        iconTimer = nil
+        guard !isSuspended else { return }
         let fps = 5 + 17 * min(1, loadMonitor.load * 1.3)
         let timer = Timer(timeInterval: 1 / fps, repeats: false) { [weak self] _ in
             guard let self else { return }
@@ -237,6 +289,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         timer.tolerance = 0.01
         RunLoop.main.add(timer, forMode: .common)
+        iconTimer = timer
     }
 
     private func buildMenu() {
