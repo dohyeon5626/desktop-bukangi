@@ -114,14 +114,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         emitEffects()
     }
 
-    /// 60 fps only while she moves quickly; a slow glide looks just as smooth at 30.
+    /// 60 fps whenever she can be seen, since even a slow glide steps visibly at 30. Drop to 30
+    /// only when she's hidden under a window, very deep and blurred, or the Mac is busy.
     private var fastMode = true
     private func adaptFrameRate(_ link: CADisplayLink) {
-        // Deep down she's blurred anyway, so judder can't be seen there.
-        let sharp = brain.depth < 0.6
-        let busy = brain.excitement > 0.05 || (sharp && (brain.speed > 70 || abs(brain.turnRate) > 0.7))
-        let calm = brain.excitement == 0 && (!sharp || (brain.speed < 55 && abs(brain.turnRate) < 0.5))
-        let want = brain.calm ? false : (fastMode ? !calm : busy)
+        let want = !brain.calm && !hiddenUnderWindow && (brain.depth < 0.8 || brain.excitement > 0.05)
         guard want != fastMode else { return }
         fastMode = want
         let fps: Float = want ? 60 : 30
