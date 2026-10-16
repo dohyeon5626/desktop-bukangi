@@ -193,7 +193,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             length: L,
             caustic: 0.14 + 0.32 * h,
             tint: 0.52 * pow(depth, 1.2),
-            shadowOpacity: (0.30 - 0.10 * h + 0.10 * depth) * shadowAmount,
+            // The shadow fades out as she dives; deep down it would only smudge the blur.
+            shadowOpacity: (0.30 - 0.10 * h + 0.10 * depth) * shadowAmount * max(0, 1 - depth / 0.6),
             shadowOffset: CGVector(dx: L * (0.025 + 0.075 * h), dy: -L * (0.035 + 0.10 * h)),
             shadowSoftness: 0.25 + 0.75 * h,
             cute: brain.cute))
