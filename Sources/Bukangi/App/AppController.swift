@@ -182,7 +182,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func applyPose(_ dt: Double) {
-        let depth = brain.depth
+        let depths = brain.spineDepths
+        let depth = depths.reduce(0, +) / Double(max(depths.count, 1))
         let h = 1 - depth
         let L = Double(brain.L)
         shadowAmount += ((brain.layer == .top ? 1 : 0.6) - shadowAmount) * min(1, dt * 1.5)
@@ -190,12 +191,16 @@ final class AppController: NSObject, NSApplicationDelegate {
             bones: brain.spine,
             angles: brain.spineAngles,
             roll: brain.roll,
-            length: L,
+            scales: brain.spineScales,
+            pitches: brain.spinePitches,
+            finAngles: brain.finAngles,
+            finSweeps: brain.finSweeps,
             caustic: 0.14 + 0.32 * h,
-            tint: 0.52 * pow(depth, 1.2),
+            tintHead: 0.52 * pow(depths.first ?? depth, 1.2),
+            tintTail: 0.52 * pow(depths.last ?? depth, 1.2),
             // The shadow fades out as she dives; deep down it would only smudge the blur.
             shadowOpacity: (0.30 - 0.10 * h + 0.10 * depth) * shadowAmount * max(0, 1 - depth / 0.6),
-            shadowOffset: CGVector(dx: L * (0.025 + 0.075 * h), dy: -L * (0.035 + 0.10 * h)),
+            shadowOffset: CGVector(dx: L * (0.03 + 0.11 * h), dy: -L * (0.04 + 0.15 * h)),
             shadowSoftness: 0.25 + 0.75 * h,
             cute: brain.cute))
         sharkRenderer.setBlur(BlurTechnique.level(forPixels: max(2.0, 7.0 * pow(depth, 1.4) * Double(backing))))

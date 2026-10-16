@@ -9,10 +9,16 @@ struct SharkPose {
     /// Heading of each bone in radians (screen space, CCW from +x).
     var angles: [Double]
     var roll: Double
-    /// Current rendered body length in points.
-    var length: Double
+    var scales: [Double]
+    /// Negative is nose down.
+    var pitches: [Double]
+    /// [+z fin, -z fin]; positive raises the fin tip.
+    var finAngles: [Double]
+    /// [+z fin, -z fin]; positive swings the fin tip forward.
+    var finSweeps: [Double] = [0, 0]
     var caustic: Double
-    var tint: Double
+    var tintHead: Double
+    var tintTail: Double
     var shadowOpacity: Double
     var shadowOffset: CGVector
     /// 0 = crisp contact shadow, 1 = very diffuse.
@@ -34,15 +40,15 @@ final class SharkRig {
 
     init() {
         scene.lightingEnvironment.contents = Self.environmentCube()
-        scene.lightingEnvironment.intensity = 0.95
+        scene.lightingEnvironment.intensity = 0.7
 
         let sun = SCNNode()
         sun.light = SCNLight()
         sun.light!.type = .directional
-        sun.light!.intensity = 1550
+        sun.light!.intensity = 1900
         sun.light!.color = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.93, alpha: 1)
         // Pointing into the screen, coming slightly from the upper left.
-        sun.simdOrientation = simd_quatf(angle: -0.38, axis: simd_normalize(SIMD3(1, 1, 0)))
+        sun.simdOrientation = simd_quatf(angle: -0.75, axis: simd_normalize(SIMD3(1, 1, 0)))
         scene.rootNode.addChildNode(sun)
 
         let fill = SCNNode()
@@ -77,10 +83,13 @@ final class SharkRig {
             m.isDoubleSided = true
             m.shaderModifiers = Shaders.skin
             m.setValue(NSNumber(value: 0.0), forKey: "causticStrength")
-            m.setValue(NSNumber(value: 0.0), forKey: "depthTint")
+            m.setValue(NSNumber(value: 0.0), forKey: "tintHead")
+            m.setValue(NSNumber(value: 0.0), forKey: "tintTail")
+            m.setValue(NSValue(scnVector4: SCNVector4(0, 0, 1, 0)), forKey: "tintAxis")
             return m
         }
         for m in mats { m.roughness.contents = 0.88 }
+        mats[0].roughness.contents = 0.62
         geometry.materials = mats
         skinMaterials = mats
 
@@ -148,10 +157,11 @@ final class SharkRig {
     private var eyes: [SCNNode] = []
 
     private func makeBones(in parent: SCNNode) -> [SCNNode] {
-        (0..<SharkMesh.boneCount).map { i in
+        (0..<SharkMesh.totalBoneCount).map { i in
             let b = SCNNode()
             b.name = "bone\(i)"
-            b.simdPosition = SIMD3(SharkMesh.boneX(i), 0, 0)
+            b.simdPosition = i < SharkMesh.boneCount ? SIMD3(SharkMesh.boneX(i), 0, 0)
+                : SharkMesh.pectoralPivots()[i - SharkMesh.boneCount]
             parent.addChildNode(b)
             return b
         }
@@ -159,8 +169,13 @@ final class SharkRig {
 
     private func makeSkinner(_ g: SCNGeometry, bones: [SCNNode], weights: SCNGeometrySource,
                              indices: SCNGeometrySource) -> SCNSkinner {
-        let inv = (0..<SharkMesh.boneCount).map { i -> NSValue in
-            NSValue(scnMatrix4: SCNMatrix4MakeTranslation(CGFloat(-SharkMesh.boneX(i)), 0, 0))
+        let pivots = SharkMesh.pectoralPivots()
+        let inv = (0..<SharkMesh.totalBoneCount).map { i -> NSValue in
+            if i < SharkMesh.boneCount {
+                return NSValue(scnMatrix4: SCNMatrix4MakeTranslation(CGFloat(-SharkMesh.boneX(i)), 0, 0))
+            }
+            let p = pivots[i - SharkMesh.boneCount]
+            return NSValue(scnMatrix4: SCNMatrix4MakeTranslation(CGFloat(-p.x), CGFloat(-p.y), CGFloat(-p.z)))
         }
         let s = SCNSkinner(baseGeometry: g, bones: bones, boneInverseBindTransforms: inv,
                            boneWeights: weights, boneIndices: indices)
@@ -174,26 +189,44 @@ final class SharkRig {
         SCNTransaction.begin()
         SCNTransaction.disableActions = true
 
-        let scale = SIMD3<Float>(repeating: Float(p.length))
         let rollQ = simd_quatf(angle: Float(p.roll), axis: SIMD3(1, 0, 0))
-        for i in 0..<bones.count {
+        let n = SharkMesh.boneCount
+        for i in 0..<n {
             let pt = p.bones[i]
             // Model space: x = screen x, z = -screen y, y = height toward the camera.
             let pos = SIMD3<Float>(Float(pt.x), 0, Float(-pt.y))
-            let q = simd_quatf(angle: Float(p.angles[i]), axis: SIMD3(0, 1, 0)) * rollQ
+            let q = simd_quatf(angle: Float(p.angles[i]), axis: SIMD3(0, 1, 0))
+                * simd_quatf(angle: Float(p.pitches[i]), axis: SIMD3(0, 0, 1)) * rollQ
+            let scale = SIMD3<Float>(repeating: Float(p.scales[i]))
+            let swell: [Float] = [1.0, 0.9, 0.6, 0.25]
             bones[i].simdPosition = pos
             bones[i].simdOrientation = q
-            let swell: [Float] = [1.0, 0.9, 0.6, 0.25]
-            let cuteScale = i < swell.count ? scale * (1 + 0.09 * Float(p.cute) * swell[i]) : scale
-            bones[i].simdScale = cuteScale
+            bones[i].simdScale = i < swell.count ? scale * (1 + 0.09 * Float(p.cute) * swell[i]) : scale
             shadowBones[i].simdPosition = pos
             shadowBones[i].simdOrientation = q
             shadowBones[i].simdScale = scale
         }
 
+        let parent = SharkMesh.pectoralParentBone
+        let parentX = SharkMesh.boneX(parent)
+        for (k, pivot) in SharkMesh.pectoralPivots().enumerated() {
+            let side: Float = k == 0 ? 1 : -1
+            let sweep = simd_float4x4(simd_quatf(angle: side * Float(p.finSweeps[k]), axis: SIMD3(0, 1, 0)))
+            let tilt = sweep * simd_float4x4(simd_quatf(angle: side * Float(p.finAngles[k]), axis: SIMD3(1, 0, 0)))
+            var hinge = matrix_identity_float4x4
+            hinge.columns.3 = SIMD4(pivot.x - parentX, pivot.y, pivot.z, 1)
+            let i = n + k
+            bones[i].simdTransform = bones[parent].simdTransform * hinge * tilt
+            shadowBones[i].simdTransform = shadowBones[parent].simdTransform * hinge * tilt
+        }
+
+        let head = p.bones[0], tail = p.bones[n - 1]
+        let axis = NSValue(scnVector4: SCNVector4(head.x, head.y, tail.x, tail.y))
         for m in skinMaterials {
             m.setValue(NSNumber(value: p.caustic), forKey: "causticStrength")
-            m.setValue(NSNumber(value: p.tint), forKey: "depthTint")
+            m.setValue(NSNumber(value: p.tintHead), forKey: "tintHead")
+            m.setValue(NSNumber(value: p.tintTail), forKey: "tintTail")
+            m.setValue(axis, forKey: "tintAxis")
         }
 
         let eyeScale = Float(1 + 0.14 * p.cute)

@@ -38,7 +38,9 @@ enum Shaders {
         """,
         .fragment: """
         #pragma arguments
-        float depthTint;
+        float tintHead;
+        float tintTail;
+        float4 tintAxis;
         #pragma body
         // A light illustrated look: soft tonal bands.
         float3 ilCol = _output.color.rgb;
@@ -55,7 +57,11 @@ enum Shaders {
         float ilRim = 1.0 - smoothstep(0.04, 0.22, ilNz);
         ilCol = mix(ilCol, float3(0.20, 0.25, 0.38) * ilA, ilRim * 0.35);
         float3 ilWater = float3(0.13, 0.33, 0.36);
-        _output.color.rgb = mix(ilCol, ilWater * ilA, depthTint);
+        // tintAxis = head.xy, tail.xy in screen points.
+        float2 ilWorld = (scn_frame.inverseViewTransform * float4(_surface.position, 1.0)).xy;
+        float2 ilBody = tintAxis.zw - tintAxis.xy;
+        float ilT = clamp(dot(ilWorld - tintAxis.xy, ilBody) / max(dot(ilBody, ilBody), 1.0), 0.0, 1.0);
+        _output.color.rgb = mix(ilCol, ilWater * ilA, mix(tintHead, tintTail, ilT));
         """,
     ]
 }

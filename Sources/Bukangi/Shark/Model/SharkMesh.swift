@@ -28,6 +28,15 @@ enum SharkMesh {
     static var boneSpacing: Float { 1.0 / Float(boneCount - 1) }
     static func boneX(_ i: Int) -> Float { 0.5 - Float(i) * boneSpacing }
 
+    static let pectoralBones = [boneCount, boneCount + 1]
+    static var totalBoneCount: Int { boneCount + pectoralBones.count }
+    static let pectoralParentBone = 5
+
+    static func pectoralPivots() -> [SIMD3<Float>] {
+        let paired = finSpecs().paired
+        return [paired[0].origin, paired[2].origin].map { SIMD3(0.255, $0.y, $0.z) }
+    }
+
     // MARK: Body
 
     static func body(rings: Int = 150, segments: Int = 72) -> MeshData {
@@ -196,15 +205,20 @@ struct SkinnedShark {
         return (idx, wt)
     }
 
-    mutating func append(_ m: MeshData, group: Int, rigidX: Float? = nil) {
+    mutating func append(_ m: MeshData, group: Int, rigidX: Float? = nil, bone: Int? = nil) {
         let base = UInt32(positions.count)
         positions += m.positions
         normals += m.normals
         uvs += m.uvs
         for p in m.positions {
-            let (i, w) = Self.boneBinding(forX: rigidX ?? p.x)
-            boneIndices.append(i)
-            boneWeights.append(w)
+            if let bone {
+                boneIndices.append(SIMD4(UInt16(bone), 0, 0, 0))
+                boneWeights.append(SIMD4(1, 0, 0, 0))
+            } else {
+                let (i, w) = Self.boneBinding(forX: rigidX ?? p.x)
+                boneIndices.append(i)
+                boneWeights.append(w)
+            }
         }
         groups[group] += m.indices.map { $0 + base }
     }
@@ -214,7 +228,14 @@ struct SkinnedShark {
         s.append(SharkMesh.body(), group: 0)
         let fins = SharkMesh.finSpecs()
         for f in fins.vertical { s.append(SharkMesh.fin(f), group: 1) }
-        for f in fins.paired { s.append(SharkMesh.fin(f), group: 2, rigidX: f.leRoot.x - 0.03) }
+        for (k, f) in fins.paired.enumerated() {
+            // Order is [+z pectoral, +z pelvic, -z pectoral, -z pelvic].
+            if k % 2 == 0 {
+                s.append(SharkMesh.fin(f), group: 2, bone: SharkMesh.pectoralBones[k / 2])
+            } else {
+                s.append(SharkMesh.fin(f), group: 2, rigidX: f.leRoot.x - 0.03)
+            }
+        }
         return s
     }
 

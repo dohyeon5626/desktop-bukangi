@@ -61,6 +61,12 @@ final class SharkBrain {
     var excitement: Double = 0
     private(set) var spine: [CGPoint] = []
     private(set) var spineAngles: [Double] = []
+    /// Follows the depth the head had along its path, so dives start at the head.
+    private(set) var spineDepths: [Double] = []
+    private(set) var spineScales: [Double] = []
+    private(set) var spinePitches: [Double] = []
+    private(set) var finAngles: [Double] = [0, 0]
+    private(set) var finSweeps: [Double] = [0, 0]
     var surfacedEvent = false
     var wiggle = 0.0
     /// Small surface ripples left behind while swimming at the top.
@@ -82,6 +88,8 @@ final class SharkBrain {
     var windows: [TrackedWindow] = []
 
     var history: [CGPoint] = []
+    private var historyDepth: [Double] = []
+    private var lastDepth = 1.0
     var mouse = CGPoint(x: -1e5, y: -1e5)
     var mouseVel = CGVector.zero
     var hasMouse = false
@@ -98,7 +106,8 @@ final class SharkBrain {
     let seedA = Double.random(in: 0...100)
     let seedB = Double.random(in: 0...100)
 
-    var visualScale: CGFloat { 1 - 0.24 * CGFloat(depth) }
+    static func scale(forDepth d: Double) -> Double { 1 - 0.34 * d }
+    var visualScale: CGFloat { CGFloat(Self.scale(forDepth: depth)) }
     /// Rendered body length in points.
     var L: CGFloat { length * visualScale }
     var center: CGPoint { spine.isEmpty ? head : spine[spine.count / 2] }
@@ -117,6 +126,8 @@ final class SharkBrain {
         head = randomPoint() ?? CGPoint(x: s.midX, y: s.midY)
         heading = Double.random(in: -Double.pi...Double.pi)
         history = [CGPoint(x: head.x - cos(heading) * L * 1.2, y: head.y - sin(heading) * L * 1.2), head]
+        historyDepth = [1, 1]
+        spineDepths = []
         depth = 1
         depthTarget = 1
         layer = .bottom
@@ -186,6 +197,7 @@ final class SharkBrain {
         desiredSpeed = spd * CGFloat(paced)
         steer(toward: target, dt: dt)
         updateMood(dt)
+        updateFins(dt)
         depth += (depthTarget - depth) * min(1, dt * 0.75)
         excitement = max(0, excitement - dt * 0.5)
         wiggle = max(0, wiggle - dt)
@@ -309,7 +321,7 @@ final class SharkBrain {
         head.x += CGFloat(cos(heading)) * speed * CGFloat(dt)
         head.y += CGFloat(sin(heading)) * speed * CGFloat(dt)
 
-        let rollGoal = max(-0.42, min(0.42, -turnRate * Double(speed) / 300))
+        let rollGoal = max(-0.6, min(0.6, -turnRate * Double(speed) / 220)) + 0.05 * sin(tailPhase)
         roll += (rollGoal - roll) * min(1, dt * 2.2)
 
         // Tail: thrust when accelerating, glide when coasting.
@@ -328,6 +340,7 @@ final class SharkBrain {
         // still records its curve instead of one long straight chord.)
         if history.last.map({ dist($0, head) >= 1.0 }) ?? true {
             history.append(head)
+            historyDepth.append(depth)
         }
         if history.count > 64 {
             var acc: CGFloat = 0
@@ -336,7 +349,7 @@ final class SharkBrain {
                 acc += dist(history[i], history[i - 1])
                 if acc > L * 1.4 { cut = i - 1; break }
             }
-            if cut > 0 { history.removeFirst(cut) }
+            if cut > 0 { history.removeFirst(cut); historyDepth.removeFirst(cut) }
         }
     }
 
@@ -344,38 +357,48 @@ final class SharkBrain {
 
     func computeSpine() {
         let n = SharkMesh.boneCount
-        let Lp = Double(L)
-        let seg = Lp / Double(n - 1)
+        let prevDepths = spineDepths.count == n ? spineDepths : [Double](repeating: depth, count: n)
+        var segLen = [Double](repeating: 0, count: n)
+        for i in 1..<n {
+            segLen[i] = Double(length) * Self.scale(forDepth: (prevDepths[i - 1] + prevDepths[i]) / 2) / Double(n - 1)
+        }
         var base = [CGPoint](repeating: head, count: n)
         var tang = [Double](repeating: heading, count: n)
+        var boneDepth = [Double](repeating: depth, count: n)
         // The live head is always the newest point of the path.
-        let path = dist(history.last ?? head, head) > 0.01 ? history + [head] : history
+        let liveHead = dist(history.last ?? head, head) > 0.01
+        let path = liveHead ? history + [head] : history
+        let pathDepth = liveHead ? historyDepth + [depth] : historyDepth
         var idx = path.count - 1
         var acc = 0.0
         var segDir = heading
+        var target = 0.0
         for i in 1..<n {
-            let target = Double(i) * seg
+            target += segLen[i]
             while true {
                 if idx <= 0 {
                     let p = path.first ?? head
                     let rem = target - acc
                     base[i] = CGPoint(x: p.x - CGFloat(cos(segDir) * rem), y: p.y - CGFloat(sin(segDir) * rem))
                     tang[i] = segDir
+                    boneDepth[i] = pathDepth.first ?? depth
                     break
                 }
                 let a = path[idx], b = path[idx - 1]
                 let d = Double(dist(a, b))
                 if d > 1e-6 { segDir = atan2(Double(a.y - b.y), Double(a.x - b.x)) }
                 if acc + d >= target {
-                    let f = CGFloat((target - acc) / d)
-                    base[i] = CGPoint(x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f)
+                    let f = (target - acc) / d
+                    base[i] = CGPoint(x: a.x + (b.x - a.x) * CGFloat(f), y: a.y + (b.y - a.y) * CGFloat(f))
                     tang[i] = segDir
+                    boneDepth[i] = pathDepth[idx] + (pathDepth[idx - 1] - pathDepth[idx]) * f
                     break
                 }
                 acc += d
                 idx -= 1
             }
         }
+        let Lp = Double(length) * Self.scale(forDepth: boneDepth.reduce(0, +) / Double(n))
 
         // Travelling body wave, growing toward the tail.
         let k = 2 * Double.pi * 0.85
@@ -400,14 +423,43 @@ final class SharkBrain {
                 let bend = wrapAngle(targetDir[i] - targetDir[i - 1])
                 dir += maxBend * tanh(bend / maxBend)
             }
-            pts[i] = CGPoint(x: pts[i - 1].x - CGFloat(cos(dir) * seg), y: pts[i - 1].y - CGFloat(sin(dir) * seg))
+            pts[i] = CGPoint(x: pts[i - 1].x - CGFloat(cos(dir) * segLen[i]), y: pts[i - 1].y - CGFloat(sin(dir) * segLen[i]))
         }
         var angles = [Double](repeating: heading, count: n)
         for i in 0..<n {
             let a = pts[max(i - 1, 0)], b = pts[min(i + 1, n - 1)]
             angles[i] = atan2(Double(a.y - b.y), Double(a.x - b.x))
         }
+        let diveHeight = Double(length)
+        var pitches = [Double](repeating: 0, count: n)
+        for i in 0..<n {
+            let a = max(i - 1, 0), b = min(i + 1, n - 1)
+            let run = segLen[max(i, 1)] * Double(b - a)
+            pitches[i] = max(-0.5, min(0.5, atan((boneDepth[b] - boneDepth[a]) * diveHeight / max(run, 1))))
+        }
         spine = pts
         spineAngles = angles
+        spineDepths = boneDepth
+        spineScales = boneDepth.map { Double(length) * Self.scale(forDepth: $0) }
+        spinePitches = pitches
+    }
+
+    private func updateFins(_ dt: Double) {
+        let depthRate = (depth - lastDepth) / max(dt, 1e-3)
+        lastDepth = depth
+        let dive = max(-1, min(1, depthRate * 3))
+        let slow = max(0, 1 - Double(speed) / 50)
+        let turn = max(-0.4, min(0.4, turnRate * 0.5))
+        let tuck = min(1, excitement * 1.5)
+
+        let tilts = [-0.5 * dive + 0.6 * turn, -0.5 * dive - 0.6 * turn]
+        for k in 0..<2 {
+            let side = k == 0 ? 1.0 : -1.0
+            let stroke = side * 0.12 * sin(tailPhase - 0.8) + side * 0.22 * slow * sin(time * 1.3)
+            let sweep = (stroke + side * 0.8 * turn - 0.2 * abs(dive)) * (1 - tuck) - 0.45 * tuck
+            let tilt = tilts[k] + 0.06 * sin(tailPhase * 2) + 0.12 * slow * sin(time * 1.3 + 1)
+            finSweeps[k] += (sweep - finSweeps[k]) * min(1, dt * 5)
+            finAngles[k] += (tilt - finAngles[k]) * min(1, dt * 4)
+        }
     }
 }
