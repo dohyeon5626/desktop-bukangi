@@ -124,15 +124,15 @@ final class SharkRig {
         sm.isDoubleSided = true
         sm.writesToDepthBuffer = false
         sm.readsFromDepthBuffer = false
-        sm.blendMode = .alpha
+        // Body and fins are separate pieces that overlap; max blending keeps the darkest coverage
+        // instead of stacking it, so the overlaps don't show as darker bands. The shadow draws
+        // first onto a clear target, so max works like normal coverage there.
+        sm.blendMode = .max
         sm.shaderModifiers = [.fragment: Shaders.shadow]
         sm.setValue(NSNumber(value: 0.0), forKey: "shadowAlpha")
         sm.setValue(NSNumber(value: 0.5), forKey: "shadowSoft")
         shadowMaterial = sm
-        // Fins are thin and flat, so their shadows read too hard; draw them fainter.
-        let finShadow = sm.copy() as! SCNMaterial
-        finShadowMaterial = finShadow
-        shadowGeo.materials = [sm, finShadow, finShadow]
+        shadowGeo.materials = [sm, sm, sm]
         shadowContainer.simdOrientation = Self.faceUp
         shadowContainer.renderingOrder = -10
         scene.rootNode.addChildNode(shadowContainer)
@@ -146,7 +146,6 @@ final class SharkRig {
 
     private var shadowMaterial: SCNMaterial!
     private var eyes: [SCNNode] = []
-    private var finShadowMaterial: SCNMaterial!
 
     private func makeBones(in parent: SCNNode) -> [SCNNode] {
         (0..<SharkMesh.boneCount).map { i in
@@ -204,8 +203,6 @@ final class SharkRig {
         shadowContainer.isHidden = p.shadowOpacity < 0.005
         shadowMaterial.setValue(NSNumber(value: p.shadowOpacity), forKey: "shadowAlpha")
         shadowMaterial.setValue(NSNumber(value: p.shadowSoftness), forKey: "shadowSoft")
-        finShadowMaterial.setValue(NSNumber(value: p.shadowOpacity * (0.75 - 0.4 * p.shadowSoftness)), forKey: "shadowAlpha")
-        finShadowMaterial.setValue(NSNumber(value: p.shadowSoftness), forKey: "shadowSoft")
 
         SCNTransaction.commit()
     }
